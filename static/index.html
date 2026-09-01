@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vidpipe</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="wordmark">vidpipe</span>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab is-active" data-view="build">Build</button>
+    <button class="tab" data-view="assets">References</button>
+    <button class="tab" data-view="workflow">Workflow</button>
+    <button class="tab" data-view="settings">Settings</button>
+  </nav>
+  <div class="status" id="status">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">Idle</span>
+    <button class="btn btn-ghost" id="cancelBtn" hidden>Stop</button>
+  </div>
+</header>
+
+<main class="shell">
+
+  <aside class="rail">
+    <div class="rail-head">
+      <h2>Projects</h2>
+      <button class="btn btn-small" id="newProject">New</button>
+    </div>
+    <ul class="project-list" id="projectList"></ul>
+    <div class="rail-foot">
+      <h3>Activity</h3>
+      <ol class="log" id="log"></ol>
+    </div>
+  </aside>
+
+  <!-- BUILD --------------------------------------------------------- -->
+  <section class="view is-active" id="view-build">
+    <div class="empty" id="buildEmpty">
+      <p>No project open.</p>
+      <button class="btn btn-primary" id="newProjectEmpty">Start one</button>
+    </div>
+
+    <div id="buildBody" hidden>
+      <div class="stage">
+        <div class="stage-head">
+          <span class="eyebrow">Idea</span>
+          <input class="title-input" id="projectName" placeholder="Project name">
+        </div>
+        <textarea id="idea" rows="3" placeholder="What's the video? A sentence or a paragraph."></textarea>
+        <div class="row">
+          <label class="field">Segments
+            <input type="number" id="segCount" min="1" max="24" step="1">
+          </label>
+          <label class="field">Seconds each
+            <input type="number" id="segDuration" min="1" max="60" step="0.5">
+          </label>
+          <span class="hint" id="totalHint"></span>
+          <span class="spacer"></span>
+          <button class="btn" id="genScript">Write script</button>
+          <button class="btn btn-primary" id="runAll">Run everything</button>
+        </div>
+        <div class="row">
+          <label class="check"><input type="checkbox" id="storyMode"> Long story: plan an outline, then write it chapter by chapter</label>
+          <label class="field" id="chapterCountWrap">Chapters
+            <input type="number" id="chapterCount" min="1" max="40" step="1"></label>
+        </div>
+      </div>
+
+      <div class="stage" id="storyStage" hidden>
+        <div class="stage-head">
+          <span class="eyebrow">Story</span>
+          <span class="hint">Each chapter is its own call, given the plan and the chapter before it.</span>
+          <span class="spacer"></span>
+          <button class="btn" id="genOutline">Plan outline</button>
+          <button class="btn" id="genChapters">Write chapters</button>
+        </div>
+        <label class="field">Plan <span class="sub">edit freely — the chapter model reads this</span>
+          <textarea id="outline" rows="7" placeholder="The plan lands here. === CHAPTER 1 === blocks, one per chapter."></textarea>
+        </label>
+        <div class="chain" id="chapterChain"></div>
+      </div>
+
+      <div class="stage">
+        <div class="stage-head">
+          <span class="eyebrow">Script</span>
+          <span class="hint">Edit freely — the segment model reads whatever is here.</span>
+        </div>
+        <textarea id="script" rows="10" placeholder="The script lands here. You can also paste your own."></textarea>
+        <div class="row">
+          <label class="check"><input type="checkbox" id="planBeats"> Split the script into segments first</label>
+          <label class="check"><input type="checkbox" id="sendScript"> Also send the whole script as context</label>
+          <label class="check"><input type="checkbox" id="adoptCount"> Accept the segmenter's count if it differs</label>
+          <span class="spacer"></span>
+          <button class="btn" id="genBeats">Split script</button>
+          <button class="btn" id="genPrompts">Write H3 prompts</button>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="stage-head">
+          <span class="eyebrow">Segments</span>
+          <label class="check"><input type="checkbox" id="continuation"> Carry the last frame into the next segment as an extra reference</label>
+          <label class="check"><input type="checkbox" id="concat"> Join clips when finished</label>
+          <label class="check"><input type="checkbox" id="crossfadeOn"> Crossfade between clips</label>
+          <label class="field" id="crossfadeWrap"><span class="sub">seconds of overlap</span>
+            <input type="number" id="crossfade" min="0.1" max="5" step="0.1"></label>
+          <span class="spacer"></span>
+          <button class="btn btn-primary" id="renderAll">Render all</button>
+        </div>
+        <div class="chain" id="chain"></div>
+      </div>
+
+      <div class="stage" id="finalStage" hidden>
+        <div class="stage-head">
+          <span class="eyebrow">Finished video</span>
+          <span class="spacer"></span>
+          <button class="btn" id="joinNow">Join clips now</button>
+          <a class="btn" id="downloadFinal" download>Download</a>
+        </div>
+        <video id="finalVideo" controls></video>
+      </div>
+
+      <div class="stage">
+        <div class="stage-head"><span class="eyebrow">Render settings</span></div>
+        <div class="grid">
+          <label class="field">Aspect ratio
+            <select id="aspect">
+              <option>16:9 (Widescreen)</option>
+              <option>9:16 (Vertical)</option>
+              <option>1:1 (Square)</option>
+              <option>4:3 (Standard)</option>
+              <option>3:4 (Portrait)</option>
+              <option>21:9 (Cinematic)</option>
+            </select>
+          </label>
+          <label class="field">Megapixels<input type="number" id="megapixels" step="0.1" min="0.1" max="4"></label>
+          <label class="field">Steps<input type="number" id="steps" min="1" max="100"></label>
+          <label class="field">Seed <span class="sub">−1 = new each segment</span>
+            <input type="number" id="seed" step="1"></label>
+          <label class="field">Output prefix<input type="text" id="prefix"></label>
+          <label class="field">Output frame rate <span class="sub">0 = use the workflow's</span>
+            <input type="number" id="outputFps" min="0" max="120" step="1"></label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ASSETS -------------------------------------------------------- -->
+  <section class="view" id="view-assets">
+    <div class="stage">
+      <div class="stage-head">
+        <span class="eyebrow">Reference images</span>
+        <span class="hint">Uploaded into ComfyUI's input folder. Descriptions are sent to the prompt model.</span>
+        <span class="spacer"></span>
+        <label class="btn">Add images<input type="file" id="upImage" accept="image/*" multiple hidden></label>
+      </div>
+      <div class="assets" id="imageAssets"></div>
+      <label class="field" id="carriedWrap">Carried-frame description
+        <span class="sub">sent with the last frame; {x} becomes its reference number</span>
+        <textarea id="carriedDesc" rows="2"></textarea>
+      </label>
+
+      <div class="slots">
+        <div class="slots-head">
+          <h3>Slots in use</h3>
+          <div class="stepper">
+            <button class="btn btn-small" id="imgMinus" aria-label="One fewer image reference">−</button>
+            <span class="count" id="imgCount">0</span>
+            <button class="btn btn-small" id="imgPlus" aria-label="One more image reference">+</button>
+          </div>
+          <span class="hint" id="imgBudget"></span>
+        </div>
+        <p class="hint">Loaders you don't use stay bypassed. The last slot is held for the
+          carried frame whenever continuation is on.</p>
+        <div id="imageSlots" class="slot-row"></div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-head">
+        <span class="eyebrow">Reference audio</span>
+        <span class="spacer"></span>
+        <label class="btn">Add audio<input type="file" id="upAudio" accept="audio/*" multiple hidden></label>
+      </div>
+      <div class="assets" id="audioAssets"></div>
+      <div class="slots">
+        <div class="slots-head">
+          <h3>Slots in use</h3>
+          <div class="stepper">
+            <button class="btn btn-small" id="audMinus" aria-label="One fewer audio reference">−</button>
+            <span class="count" id="audCount">0</span>
+            <button class="btn btn-small" id="audPlus" aria-label="One more audio reference">+</button>
+          </div>
+          <span class="hint" id="audBudget"></span>
+        </div>
+        <div id="audioSlots" class="slot-row"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WORKFLOW ------------------------------------------------------ -->
+  <section class="view" id="view-workflow">
+    <div class="stage">
+      <div class="stage-head">
+        <span class="eyebrow">ComfyUI workflow</span>
+        <span class="spacer"></span>
+        <label class="btn btn-primary">Load workflow JSON<input type="file" id="upWorkflow" accept=".json" hidden></label>
+      </div>
+      <p class="hint">Editor-format files are converted using your running ComfyUI's node schema.
+        An API export (Workflow → Export (API)) skips that step and is the safer input.</p>
+      <div id="workflowSummary" class="summary"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS ------------------------------------------------------ -->
+  <section class="view" id="view-settings">
+    <div class="stage">
+      <div class="stage-head"><span class="eyebrow">Connections</span>
+        <span class="spacer"></span>
+        <button class="btn" id="testConn">Test</button>
+      </div>
+      <div class="grid">
+        <label class="field">Open WebUI URL<input type="text" id="owUrl" placeholder="http://localhost:3000"></label>
+        <label class="field">Open WebUI API key<input type="password" id="owKey" placeholder="sk-..."></label>
+        <label class="field">ComfyUI URL<input type="text" id="comfyUrl" placeholder="http://127.0.0.1:8188"></label>
+        <label class="field">ffmpeg<input type="text" id="ffmpeg" placeholder="ffmpeg"></label>
+        <label class="field">LLM unload URL <span class="sub">llama-swap host — empty disables</span>
+          <input type="text" id="llmUnloadUrl" placeholder="http://localhost:8080"></label>
+        <label class="field">Unload path<input type="text" id="llmUnloadPath" placeholder="/api/models/unload"></label>
+        <label class="field">Running check path<input type="text" id="llmRunningPath" placeholder="/running"></label>
+      </div>
+      <div class="row">
+        <span class="hint">Called before every render so the LLM releases its VRAM first.</span>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost" id="unloadNow">Unload now</button>
+      </div>
+      <div class="conn" id="connResult"></div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-head"><span class="eyebrow">Models</span>
+        <span class="spacer"></span>
+        <button class="btn" id="loadModels">Refresh list</button>
+      </div>
+      <div class="grid">
+        <label class="field">1 · Script model <span class="sub">idea → script; also the fallback below</span>
+          <select id="scriptModel"></select></label>
+        <label class="field">1a · Outline model <span class="sub">idea → chapter plan</span>
+          <select id="outlineModel"></select></label>
+        <label class="field">1b · Chapter model <span class="sub">plan → one chapter</span>
+          <select id="chapterModel"></select></label>
+        <label class="field">2 · Segmenter model <span class="sub">script → N segments</span>
+          <select id="beatModel"></select></label>
+        <label class="field">3 · Prompt model <span class="sub">one segment → H3 prompt</span>
+          <select id="segmentModel"></select></label>
+        <label class="field">1 · Script temperature<input type="number" id="scriptTemp" step="0.05" min="0" max="2"></label>
+        <label class="field">1a · Outline temperature<input type="number" id="outlineTemp" step="0.05" min="0" max="2"></label>
+        <label class="field">1b · Chapter temperature<input type="number" id="chapterTemp" step="0.05" min="0" max="2"></label>
+        <label class="field">2 · Segmenter temperature<input type="number" id="beatTemp" step="0.05" min="0" max="2"></label>
+        <label class="field">3 · Prompt temperature<input type="number" id="segmentTemp" step="0.05" min="0" max="2"></label>
+        <label class="field">LLM timeout <span class="sub">seconds per reply</span>
+          <input type="number" id="llmTimeout" min="10" max="3600" step="10"></label>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-head"><span class="eyebrow">Prompts</span>
+        <span class="hint">Exactly what is sent. Clear a system box to send no system message; clear a user box to send just the data — the idea, script or segment — with no wrapper text.</span>
+      </div>
+      <p class="token-help">
+        System prompts <em>and</em> user messages are yours to edit — nothing is injected
+        behind them. Placeholders, replaced before sending — any case, braced or bare:<br>
+        number of segments &nbsp;<b>{segment_count}</b> &nbsp;<b>{x}</b> &nbsp;<b>SEGMENT_AMOUNT</b><br>
+        seconds per segment &nbsp;<b>{segment_seconds}</b> &nbsp;<b>{duration}</b><br>
+        total length &nbsp;<b>{total_seconds}</b><br>
+        Braces are required for short names: <b>{x}</b> is replaced, a bare <b>x</b> is not —
+        it would mangle ordinary prose.
+      </p>
+      <p class="token-warn" id="tokenWarn" hidden></p>
+      <label class="field">1a · Outline model — system <span class="sub">long-story mode; must return === CHAPTER n === blocks</span>
+        <textarea id="outlineSystem" rows="7" placeholder="Empty = no system message"></textarea>
+      </label>
+      <label class="field">1a · Outline model — user message <span class="sub">{idea} {chapter_count}</span>
+        <textarea id="outlineUser" rows="3" placeholder="Empty = just the idea"></textarea>
+      </label>
+      <label class="field">1b · Chapter model — system
+        <textarea id="chapterSystem" rows="7" placeholder="Empty = no system message"></textarea>
+      </label>
+      <label class="field">1b · Chapter model — user message
+        <span class="sub">{outline} {brief} {previous} {index} {chapter_count}</span>
+        <textarea id="chapterUser" rows="7" placeholder="Empty = plan, brief and previous chapter"></textarea>
+      </label>
+      <label class="field">1 · Script model — system <span class="sub">short mode only, when long story is off</span>
+        <textarea id="scriptSystem" rows="7" placeholder="Empty = the model's own instructions"></textarea>
+      </label>
+      <label class="field">1 · Script model — user message <span class="sub">{idea} {total_seconds}</span>
+        <textarea id="scriptUser" rows="4" placeholder="Empty = the built-in template"></textarea>
+      </label>
+      <label class="field">2 · Segmenter model — system <span class="sub">must return the === SEGMENT n === blocks vidpipe parses</span>
+        <textarea id="beatSystem" rows="7" placeholder="Empty = the built-in segmenting format"></textarea>
+      </label>
+      <label class="field">2 · Segmenter model — user message <span class="sub">{script} {ranges} {segment_count}</span>
+        <textarea id="beatUser" rows="4" placeholder="Empty = the built-in template"></textarea>
+      </label>
+      <label class="field">3 · Prompt model — system <span class="sub">reply is used as the H3 prompt verbatim</span>
+        <textarea id="segmentSystem" rows="10" placeholder="Empty = the model's own instructions"></textarea>
+      </label>
+      <label class="field">3 · Prompt model — user message
+        <span class="sub">{script} {segment} {references} {previous} {index} {start} {end} · [[name]]…[[/name]] keeps a block only when that value exists</span>
+        <textarea id="segmentUser" rows="10" placeholder="Empty = the built-in template"></textarea>
+      </label>
+      <div class="row">
+        <button class="btn btn-ghost" id="fillDefaults">Insert the built-in prompts</button>
+        <button class="btn btn-ghost" id="showPreview">Show what gets sent</button>
+        <span class="spacer"></span>
+        <button class="btn btn-primary" id="saveSettings">Save settings</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="previewModal" hidden>
+  <div class="modal-box">
+    <div class="stage-head">
+      <span class="eyebrow">Outgoing request</span>
+      <select id="previewStage">
+        <option value="script">1 · idea → script</option>
+        <option value="outline">1a · idea → chapter plan</option>
+        <option value="chapter">1b · plan → one chapter</option>
+        <option value="beats">2 · script → segments</option>
+        <option value="segment">3 · segment → H3 prompt</option>
+      </select>
+      <label class="field" id="previewIndexWrap">segment
+        <input type="number" id="previewIndex" min="1" step="1" value="1"></label>
+      <span class="spacer"></span>
+      <button class="btn" id="previewClose">Close</button>
+    </div>
+    <div class="hint" id="previewMeta"></div>
+    <pre id="previewBody"></pre>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>
